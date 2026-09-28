@@ -1,0 +1,6 @@
+{
+  "name": "Складской учёт — ИП Новиков / Негоциант",
+  "description": "Полноценная система складского учёта для двух складов с поддержкой Telegram-авторизации, сканирования штрихкодов, работы с заказами, приходами, остатками и отчетами.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
