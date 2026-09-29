@@ -66,7 +66,7 @@ export const CounterpartiesTab: React.FC = () => {
     setPhone("");
     setEmail("");
     setInn("");
-    setAddress("");
+    //setAddress("");
     setModalOpen(true);
   };
 
@@ -76,7 +76,7 @@ export const CounterpartiesTab: React.FC = () => {
     setPhone(item.phone || "");
     setEmail(item.email || "");
     setInn(item.inn || "");
-    setAddress(item.address || "");
+    //setAddress(item.address || "");
     setModalOpen(true);
   };
 
@@ -94,7 +94,7 @@ export const CounterpartiesTab: React.FC = () => {
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,
         inn: inn.trim() || undefined,
-        address: address.trim() || undefined,
+        //address: address.trim() || undefined,
       };
 
       if (editingId) {
@@ -258,9 +258,7 @@ export const CounterpartiesTab: React.FC = () => {
                     <td className="p-3 text-slate-400">
                       {item.email || <span className="text-slate-600">—</span>}
                     </td>
-                    <td className="p-3 text-slate-400">
-                      {item.address || <span className="text-slate-600">—</span>}
-                    </td>
+                    
                     <td className="p-3 text-right">
                       {role !== "GUEST" && (
                         <div className="flex items-center justify-end gap-1">
