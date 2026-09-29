@@ -1,19 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { getServerSession } from '@/lib/auth';
+import { NextResponse } from "next/server";
+import { GroupService } from "@/src/services/group.service";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const session = await getServerSession(req);
-    if (!session) return NextResponse.json({ success: false, data: null, message: 'Не авторизован' }, { status: 401 });
-    if (session.role === 'GUEST') return NextResponse.json({ success: false, data: null, message: 'Доступ ограничен' }, { status: 403 });
-
-    const groups = await prisma.group.findMany({
-      orderBy: { name: 'asc' },
-    });
-
-    return NextResponse.json({ success: true, data: groups, message: null });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, data: null, message: err.message }, { status: 500 });
+    const list = await GroupService.getAll();
+    return NextResponse.json({ success: true, data: list });
+  } catch (err: unknown) {
+    return NextResponse.json(
+      { success: false, error: (err as Error)?.message || "Failed to fetch groups" },
+      { status: 500 }
+    );
   }
 }

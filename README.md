@@ -1,20 +1,155 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# NegoStore — Система складского учёта
 
-# Run and deploy your AI Studio app
+Полноценная корпоративная веб-система для управления складским учётом двух независимых складов:
+1. **ИП Новиков**
+2. **ООО "ТД "Негоциант"**
 
-This contains everything you need to run your app locally.
+---
 
-View your app in AI Studio: https://ai.studio/apps/055142d7-2f7b-4e99-bef3-3faa1a7780c7
+## 🛠 Технологический стек
 
-## Run Locally
+* **Frontend & Backend**: Next.js 15 (App Router), React 19, TypeScript
+* **State Management**: Zustand
+* **API Client**: Axios
+* **Validation**: Zod
+* **Database & ORM**: PostgreSQL, Prisma ORM 7 / 6, `@prisma/adapter-pg`, `pg`
+* **Styling**: Tailwind CSS
+* **Icons**: `lucide-react`
+* **Mobile / PWA**: Web App Manifest, Service Worker, Web Push API, Barcode Scanner (Камера мобильного устройства)
+* **Auth**: Telegram Authentication (HMAC-SHA256 валидация данных бота `Negostore_bot`)
 
-**Prerequisites:**  Node.js
+---
 
+## ⚙️ Переменные окружения (`.env`)
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Создайте файл `.env` в корне проекта на основе `.env.example`:
+
+```env
+# Строка подключения к базе данных PostgreSQL
+DATABASE_URL="postgresql://user:password@host:5432/negostore?sslmode=require"
+
+# Секрет сессии
+NEXTAUTH_SECRET="your-secure-random-secret-key-32-chars"
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+
+# Telegram Bot
+TELEGRAM_BOT_TOKEN="your_telegram_bot_token"
+TELEGRAM_BOT_USERNAME="Negostore_bot"
+INITIAL_ADMIN_TELEGRAM_ID="123456789"
+
+# Web Push (VAPID)
+NEXT_PUBLIC_VAPID_PUBLIC_KEY="your_vapid_public_key"
+VAPID_PRIVATE_KEY="your_vapid_private_key"
+VAPID_SUBJECT="mailto:admin@negostore.ru"
+```
+
+---
+
+## 🚀 Установка и первый запуск
+
+1. Установка зависимостей:
+   ```bash
+   npm install
+   ```
+
+2. Генерация Prisma Client:
+   ```bash
+   npx prisma generate
+   ```
+
+3. Выполнение миграций базы данных:
+   ```bash
+   npx prisma migrate dev --name init
+   ```
+
+4. Заполнение начальными данными (Склады, Группы, Администратор):
+   ```bash
+   npx tsx prisma/seed.ts
+   ```
+
+5. Запуск сервера разработки:
+   ```bash
+   npm run dev
+   ```
+
+---
+
+## 🏢 Структура складов и изоляция данных
+
+В системе функционируют два склада:
+* **ИП Новиков** (`w-novikov`, код: `novikov`)
+* **ООО "ТД "Негоциант"** (`w-negociant`, код: `negociant`)
+
+Каждый склад имеет:
+* собственную номенклатуру товаров;
+* собственные остатки;
+* собственные счета покупателей;
+* собственные приходы от поставщиков.
+
+Общие для всех складов:
+* 7 товарных групп (Канцелярия, Бытовая химия, Хоз товары, Мебель, Инструменты, Оргтехника, Товары для дома);
+* справочник контрагентов (Клиенты и Поставщики);
+* пользователи и их роли;
+* системный журнал аудита.
+
+**Защита от смешивания складов (Cross-Warehouse Protection):**
+Сервер на уровне транзакции проверяет принадлежность товара складу документа. Добавление товара склада А в документ склада Б вызывает ошибку `WAREHOUSE_MISMATCH`.
+
+---
+
+## 👥 Роли пользователей
+
+1. **ADMIN**
+   * Полный доступ ко всем складам и модулям;
+   * Управление пользователями и смена ролей (ADMIN, MANAGER, GUEST);
+   * Блокировка и разблокировка учетных записей;
+   * Просмотр журнала аудита (`AuditLog`);
+   * Удаление документов и номенклатуры.
+
+2. **MANAGER**
+   * Просмотр и поиск по номенклатуре и остаткам;
+   * Оформление и редактирование счетов и приходов (пока они в статусе `DRAFT`);
+   * Проведение документов;
+   * Использование сканера штрихкодов.
+
+3. **GUEST**
+   * Назначается автоматически всем новым пользователям при входе через Telegram;
+   * Защищенный экран: «Ожидается назначение прав администратора»;
+   * Запрещен доступ к просмотру складов, номенклатуры, документов и остатков (блокируется на клиенте и в API).
+
+---
+
+## 📄 Жизненный цикл документов
+
+Все документы (Счета покупателей `Order` и Приходы от поставщиков `Incoming`) имеют цикл:
+$$\text{DRAFT (Черновик)} \longrightarrow \text{POSTED (Проведён)}$$
+
+* **Черновик (`DRAFT`)**: разрешено изменение позиций, количества, цен, клиента/поставщика.
+* **Проведён (`POSTED`)**: документ блокируется от любых изменений. Сервер отклоняет попытку изменения с ошибкой `DOCUMENT_ALREADY_POSTED`.
+* **Проверка остатка**: При проведении счета проверяется наличие достаточного остатка каждого товара. Если остатка недостаточно, операция прерывается с ошибкой `INSUFFICIENT_STOCK`.
+* **Складские движения (`StockMovement`)**: Проведение документа атомарно создает складские движения (`OUTGOING` при счете, `INCOMING` при приходе) и пересчитывает актуальный остаток товара. Ручное прямое изменение остатков запрещено.
+
+---
+
+## 📷 Сканер штрихкодов
+
+Встроенный сканер поддерживает камеру смартфона через `getUserMedia` и API распознавания штрихкодов (`BarcodeDetector`), а также быстрый ручной ввод.
+* Поиск товара в справочнике по штрихкоду;
+* Автозаполнение штрихкода при создании/редактировании товара;
+* Быстрое сканирование в счет или приход: при считывании штрихкода товар автоматически добавляется в документ, либо увеличивается его количество.
+
+---
+
+## 🔔 Web Push и PWA
+
+* **PWA**: Поддержка установки на Android, Desktop и iOS Safari (с пошаговой инструкцией).
+* **Push Notifications**: Уведомления при создании и проведении счетов и приходов.
+
+---
+
+## 🧪 Тестирование бизнес-правил
+
+Для запуска проверки 10 ключевых бизнес-правил откройте в браузере или вызовите:
+```bash
+curl http://localhost:3000/api/tests
+```

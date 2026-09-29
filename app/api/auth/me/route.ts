@@ -1,28 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from '@/lib/auth';
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/src/lib/auth";
+import { UserService } from "@/src/services/user.service";
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(req);
-
-    if (!session) {
-      return NextResponse.json({
-        success: false,
-        data: null,
-        message: 'Не авторизован',
-      }, { status: 401 });
+    const session = getSessionFromRequest(req);
+    if (!session || !session.id) {
+      return NextResponse.json({ success: false, data: null }, { status: 401 });
     }
 
-    return NextResponse.json({
-      success: true,
-      data: session,
-      message: null,
-    });
-  } catch (error: any) {
-    return NextResponse.json({
-      success: false,
-      data: null,
-      message: error.message || 'Ошибка сервера',
-    }, { status: 500 });
+    const user = await UserService.getById(session.id);
+    if (!user) {
+      return NextResponse.json({ success: false, data: null }, { status: 401 });
+    }
+
+    return NextResponse.json({ success: true, data: user });
+  } catch (err: unknown) {
+    return NextResponse.json(
+      { success: false, error: (err as Error)?.message || "Internal server error" },
+      { status: 500 }
+    );
   }
 }

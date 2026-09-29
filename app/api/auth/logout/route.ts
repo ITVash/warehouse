@@ -1,11 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
 
 export async function POST() {
-  const res = NextResponse.json({
-    success: true,
-    data: null,
-    message: 'Выход выполнен',
-  });
-  res.cookies.delete('session_user_id');
-  return res;
+  const response = NextResponse.json({ success: true, message: "Сессия завершена" });
+  response.cookies.delete("negostore_session");
+  return response;
 }

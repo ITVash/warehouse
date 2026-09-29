@@ -1,28 +1,34 @@
-import type { MetadataRoute } from 'next';
+import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    id: '/',
-    name: 'Складской учёт ИП Новиков и ТД Негоциант',
-    short_name: 'СкладУчёт',
-    description: 'Система складского учёта, номенклатуры, заказов, приходов и остатков',
-    start_url: '/',
-    scope: '/',
-    display: 'standalone',
-    background_color: '#0f172a',
-    theme_color: '#1e293b',
+    id: "/",
+    name: "NegoStore Складской учёт",
+    short_name: "NegoStore",
+    description: "Система складского учёта для ИП Новиков и ООО ТД Негоциант",
+    start_url: "/",
+    scope: "/",
+    display: "standalone",
+    background_color: "#0f172a",
+    theme_color: "#0f172a",
     icons: [
       {
-        src: '/icon-192.png',
-        sizes: '192x192',
-        type: 'image/png',
-        purpose: 'any',
+        src: "/icon.svg",
+        sizes: "any",
+        type: "image/svg+xml",
+        purpose: "any",
       },
       {
-        src: '/icon-512.png',
-        sizes: '512x512',
-        type: 'image/png',
-        purpose: 'any',
+        src: "/icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
       },
     ],
   };

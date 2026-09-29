@@ -1,76 +1,65 @@
-const CACHE_NAME = 'sklad-cache-v1';
-const urlsToCache = ['/', '/auth', '/warehouses'];
+// NegoStore Service Worker - Web Push & Offline Support
+const CACHE_NAME = "negostore-v1";
+const STATIC_ASSETS = ["/", "/manifest.webmanifest", "/icon.svg"];
 
-self.addEventListener('install', (event) => {
+self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(urlsToCache);
+      return cache.addAll(STATIC_ASSETS);
     })
   );
   self.skipWaiting();
 });
 
-self.addEventListener('activate', (event) => {
+self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
+    caches.keys().then((keys) => {
       return Promise.all(
-        cacheNames.map((name) => {
-          if (name !== CACHE_NAME) {
-            return caches.delete(name);
-          }
-        })
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
       );
     })
   );
   self.clients.claim();
 });
 
-self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET' || event.request.url.includes('/api/')) {
-    return;
-  }
-  event.respondWith(
-    fetch(event.request).catch(() => {
-      return caches.match(event.request).then((response) => {
-        if (response) return response;
-        if (event.request.mode === 'navigate') {
-          return caches.match('/');
-        }
-      });
-    })
-  );
-});
-
-self.addEventListener('push', (event) => {
-  if (!event.data) return;
+// Push notification receiver
+self.addEventListener("push", (event) => {
+  let data = { title: "NegoStore", body: "Новое уведомление склада", url: "/" };
   try {
-    const data = event.data.json();
-    const options = {
-      body: data.message || 'Новое складское уведомление',
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      data: {
-        url: data.link || '/',
-      },
-    };
-    event.waitUntil(self.registration.showNotification(data.title || 'Складской учёт', options));
-  } catch (e) {
-    console.error('Push error:', e);
+    if (event.data) {
+      data = event.data.json();
+    }
+  } catch (err) {
+    console.error("Failed to parse push data:", err);
   }
+
+  const options = {
+    body: data.body,
+    icon: "/icon.svg",
+    badge: "/icon.svg",
+    data: {
+      url: data.url || "/",
+    },
+    vibrate: [100, 50, 100],
+  };
+
+  event.waitUntil(self.registration.showNotification(data.title, options));
 });
 
-self.addEventListener('notificationclick', (event) => {
+// Notification click handler
+self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || '/';
+  const urlToOpen = event.notification.data?.url || "/";
+
   event.waitUntil(
-    self.clients.matchAll({ type: 'window' }).then((windowClients) => {
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
       for (const client of windowClients) {
-        if (client.url === url && 'focus' in client) {
+        if (client.url === urlToOpen && "focus" in client) {
           return client.focus();
         }
       }
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(url);
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
       }
     })
   );

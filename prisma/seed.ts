@@ -1,126 +1,84 @@
-import { PrismaClient } from '@prisma/client';
+import "dotenv/config";
+import { PrismaClient, Role } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import pg from "pg";
 
-const prisma = new PrismaClient();
+const connectionString = process.env.DATABASE_URL;
 
-async function main() {
-  console.log('Seeding initial warehouse accounting data...');
+async function runSeed() {
+  console.log("Starting NegoStore database seed...");
 
-  // 1. Warehouses
-  const warehouse1 = await prisma.warehouse.upsert({
-    where: { name: 'ИП Новиков' },
-    update: {},
-    create: {
-      name: 'ИП Новиков',
-      code: 'NOV',
-      description: 'Центральный оптовый склад ИП Новиков',
-      address: 'г. Москва, складской комплекс Южные Ворота, сектор Б',
-    },
-  });
-
-  const warehouse2 = await prisma.warehouse.upsert({
-    where: { name: 'ООО "ТД "Негоциант"' },
-    update: {},
-    create: {
-      name: 'ООО "ТД "Негоциант"',
-      code: 'NEG',
-      description: 'Основной распределительный центр ООО "ТД "Негоциант"',
-      address: 'г. Санкт-Петербург, Индустриальный проспект, д. 44',
-    },
-  });
-
-  console.log(`Warehouses seeded: [${warehouse1.name}, ${warehouse2.name}]`);
-
-  // 2. Groups
-  const defaultGroups = [
-    'Канцелярия',
-    'Бытовая химия',
-    'Хоз товары',
-    'Мебель',
-    'Инструменты',
-    'Оргтехника',
-    'Товары для дома',
-  ];
-
-  for (const groupName of defaultGroups) {
-    await prisma.group.upsert({
-      where: { name: groupName },
-      update: {},
-      create: {
-        name: groupName,
-        description: `Категория товаров: ${groupName}`,
-      },
-    });
+  if (!connectionString) {
+    console.log("No DATABASE_URL found. Skipping live database seed.");
+    return;
   }
-  console.log(`Groups seeded (${defaultGroups.length} groups)`);
 
-  // 3. Default Demo Clients / Suppliers
-  const defaultClients = [
-    { name: 'ООО "Ромашка"', inn: '7701234567', phone: '+7 (495) 123-45-67', address: 'г. Москва, ул. Ленина, д. 10' },
-    { name: 'ИП Смирнов А.В.', inn: '781987654321', phone: '+7 (812) 987-65-43', address: 'г. Санкт-Петербург, Лиговский пр., 15' },
-    { name: 'ООО "Поставщик-Трейд"', inn: '5001928374', phone: '+7 (495) 555-12-34', address: 'МО, г. Подольск, Заводская 3' },
-    { name: 'ЗАО "ОфисМаркет"', inn: '7723456789', phone: '+7 (495) 777-88-99', address: 'г. Москва, шоссе Энтузиастов 28' },
-  ];
+  const pool = new pg.Pool({ connectionString });
+  const adapter = new PrismaPg(pool);
+  const prisma = new PrismaClient({ adapter });
 
-  for (const client of defaultClients) {
-    await prisma.client.upsert({
-      where: { name: client.name },
-      update: {},
-      create: client,
-    });
+  try {
+    const warehousesData = [
+      { name: "ИП Новиков", code: "novikov" },
+      { name: "ООО \"ТД \"Негоциант\"", code: "negociant" },
+    ];
+
+    for (const w of warehousesData) {
+      await prisma.warehouse.upsert({
+        where: { code: w.code },
+        update: { name: w.name, isActive: true },
+        create: { name: w.name, code: w.code, isActive: true },
+      });
+      console.log(`Warehouse seeded: ${w.name}`);
+    }
+
+    const groupsData = [
+      "Канцелярия",
+      "Бытовая химия",
+      "Хоз товары",
+      "Мебель",
+      "Инструменты",
+      "Оргтехника",
+      "Товары для дома",
+    ];
+
+    for (const groupName of groupsData) {
+      await prisma.group.upsert({
+        where: { name: groupName },
+        update: {},
+        create: { name: groupName },
+      });
+      console.log(`Group seeded: ${groupName}`);
+    }
+
+    const adminTelegramId = process.env.INITIAL_ADMIN_TELEGRAM_ID;
+    if (adminTelegramId) {
+      await prisma.user.upsert({
+        where: { telegramId: adminTelegramId },
+        update: { role: Role.ADMIN, isActive: true },
+        create: {
+          telegramId: adminTelegramId,
+          username: "admin",
+          firstName: "Администратор",
+          lastName: "NegoStore",
+          role: Role.ADMIN,
+          isActive: true,
+        },
+      });
+      console.log(`Admin user seeded for Telegram ID: ${adminTelegramId}`);
+    }
+
+    console.log("Seed completed successfully!");
+  } catch (error) {
+    console.error("Error during seed:", error);
+    throw error;
+  } finally {
+    await prisma.$disconnect();
+    await pool.end();
   }
-  console.log(`Clients seeded (${defaultClients.length} clients)`);
-
-  // 4. Default Admin User (for immediate work / local test login)
-  const adminUser = await prisma.user.upsert({
-    where: { telegramId: 'admin_demo_id' },
-    update: {},
-    create: {
-      telegramId: '454135208',
-      username: 'ITVash',
-      firstName: 'Иван',
-      lastName: 'Полищук',
-      role: 'ADMIN',
-      isBlocked: false,
-    },
-  });
-
-  // Assign admin access to both warehouses
-  await prisma.userWarehouse.upsert({
-    where: {
-      userId_warehouseId: {
-        userId: adminUser.id,
-        warehouseId: warehouse1.id,
-      },
-    },
-    update: {},
-    create: {
-      userId: adminUser.id,
-      warehouseId: warehouse1.id,
-    },
-  });
-
-  await prisma.userWarehouse.upsert({
-    where: {
-      userId_warehouseId: {
-        userId: adminUser.id,
-        warehouseId: warehouse2.id,
-      },
-    },
-    update: {},
-    create: {
-      userId: adminUser.id,
-      warehouseId: warehouse2.id,
-    },
-  });
-
-  console.log('Admin user initialized with access to all warehouses.');
 }
 
-main()
-  .catch((e) => {
-    console.error('Seed error:', e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+runSeed().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

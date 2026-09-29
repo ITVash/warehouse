@@ -1,282 +1,255 @@
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
-generator client {
-  provider = "prisma-client-js"
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  GUEST
+}
+
+enum DocumentStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum MovementType {
+  INCOMING
+  OUTGOING
+  ADJUSTMENT
 }
 
 model User {
-  id              String           @id @default(uuid())
-  telegramId      String?          @unique
-  username        String?
-  firstName       String?
-  lastName        String?
-  avatarUrl       String?
-  role            String           @default("GUEST") // ADMIN, MANAGER, GUEST
-  isBlocked       Boolean          @default(false)
-  lastLoginAt     DateTime?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  id                String             @id @default(cuid())
+  telegramId        String             @unique
+  username          String?
+  firstName         String?
+  lastName          String?
+  photoUrl          String?
+  role              Role               @default(GUEST)
+  isActive          Boolean            @default(true)
+  authDate          DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
-  warehouses      UserWarehouse[]
-  orders          Order[]
-  comings         Coming[]
-  movements       StockMovement[]
+  ordersCreated     Order[]            @relation("OrderCreatedBy")
+  ordersUpdated     Order[]            @relation("OrderUpdatedBy")
+  incomingsCreated  Incoming[]         @relation("IncomingCreatedBy")
+  incomingsUpdated  Incoming[]         @relation("IncomingUpdatedBy")
+  auditLogs         AuditLog[]
   pushSubscriptions PushSubscription[]
-  auditLogs       AuditLog[]
-  notifications   Notification[]
+
+  @@index([telegramId])
+  @@index([role])
 }
 
 model Warehouse {
-  id          String           @id @default(uuid())
-  name        String           @unique
-  code        String?          @unique
-  address     String?
-  description String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id             String          @id @default(cuid())
+  name           String
+  code           String          @unique
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
-  users       UserWarehouse[]
-  products    Nomenclature[]
-  orders      Order[]
-  comings     Coming[]
-  balances    StockBalance[]
-  movements   StockMovement[]
-  auditLogs   AuditLog[]
-}
-
-model UserWarehouse {
-  id          String     @id @default(uuid())
-  userId      String
-  warehouseId String
-  createdAt   DateTime   @default(now())
-
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  warehouse   Warehouse  @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, warehouseId])
-  @@index([userId])
-  @@index([warehouseId])
+  nomenclatures  Nomenclature[]
+  orders         Order[]
+  incomings      Incoming[]
+  stockMovements StockMovement[]
 }
 
 model Group {
-  id          String         @id @default(uuid())
-  name        String         @unique
-  description String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id            String         @id @default(cuid())
+  name          String         @unique
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
-  products    Nomenclature[]
-}
-
-model Client {
-  id          String     @id @default(uuid())
-  name        String     @unique
-  phone       String?
-  email       String?
-  inn         String?
-  address     String?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-
-  orders      Order[]
-  comings     Coming[]
+  nomenclatures Nomenclature[]
 }
 
 model Nomenclature {
-  id          String         @id @default(uuid())
-  warehouseId String
-  groupId     String
-  article     String
-  barcode     String
-  title       String
-  shortTitle  String?
-  unit        String         @default("шт")
-  price       Float          @default(0)
-  minStock    Int            @default(0)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id             String          @id @default(cuid())
+  warehouseId    String
+  warehouse      Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  article        String
+  barcode        String?
+  title          String
+  shortTitle     String?
+  groupId        String
+  group          Group           @relation(fields: [groupId], references: [id])
+  quantity       Decimal         @default(0)
+  price          Decimal         @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
-  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-  group       Group          @relation(fields: [groupId], references: [id], onDelete: Restrict)
-  orderItems  OrderItem[]
-  comingItems ComingItem[]
-  balances    StockBalance[]
-  movements   StockMovement[]
+  orderItems     OrderItem[]
+  incomingItems  IncomingItem[]
+  stockMovements StockMovement[]
 
   @@unique([warehouseId, barcode])
   @@index([warehouseId])
-  @@index([groupId])
-  @@index([article])
   @@index([barcode])
-  @@index([title])
-}
-
-model StockBalance {
-  id          String       @id @default(uuid())
-  warehouseId String
-  productId   String
-  quantity    Float        @default(0)
-  updatedAt   DateTime     @updatedAt
-
-  warehouse   Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-  product     Nomenclature @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@unique([warehouseId, productId])
-  @@index([warehouseId])
-  @@index([productId])
+  @@index([article])
+  @@index([groupId])
 }
 
 model StockMovement {
-  id            String        @id @default(uuid())
-  warehouseId   String
-  productId     String
-  type          String        // INCOMING, OUTGOING, ADJUSTMENT
-  quantity      Float
-  referenceType String        // COMING, ORDER, MANUAL
-  referenceId   String?
-  comments      String?
-  createdById   String?
-  createdAt     DateTime      @default(now())
-
-  warehouse     Warehouse     @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-  product       Nomenclature  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  createdBy     User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  id           String       @id @default(cuid())
+  warehouseId  String
+  warehouse    Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Nomenclature @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type         MovementType
+  quantity     Decimal
+  documentType String?
+  documentId   String?
+  comment      String?
+  createdById  String?
+  createdAt    DateTime     @default(now())
 
   @@index([warehouseId])
   @@index([productId])
   @@index([createdAt])
-  @@index([referenceId])
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  inn       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders    Order[]
+
+  @@index([name])
+}
+
+model Supplier {
+  id        String     @id @default(cuid())
+  name      String
+  inn       String?
+  phone     String?
+  email     String?
+  comments  String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  incomings Incoming[]
+
+  @@index([name])
 }
 
 model Order {
-  id          String      @id @default(uuid())
+  id          String         @id @default(cuid())
   warehouseId String
+  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   clientId    String
+  client      Client         @relation(fields: [clientId], references: [id])
   number      String
-  status      String      @default("DRAFT") // DRAFT, CREATED, PROCESSING, COMPLETED, CANCELLED
-  totalAmount Float       @default(0)
-  comments    String?
+  status      DocumentStatus @default(DRAFT)
+  comment     String?
+  totalAmount Decimal        @default(0)
   createdById String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdBy   User?          @relation("OrderCreatedBy", fields: [createdById], references: [id])
+  updatedById String?
+  updatedBy   User?          @relation("OrderUpdatedBy", fields: [updatedById], references: [id])
+  postedAt    DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
-  warehouse   Warehouse   @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-  client      Client      @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  createdBy   User?       @relation(fields: [createdById], references: [id], onDelete: SetNull)
   items       OrderItem[]
 
-  @@unique([warehouseId, number])
   @@index([warehouseId])
-  @@index([clientId])
   @@index([status])
+  @@index([clientId])
   @@index([createdAt])
 }
 
 model OrderItem {
-  id          String       @id @default(uuid())
-  orderId     String
-  productId   String
-  quantity    Float        @default(1)
-  price       Float        @default(0)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-
-  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product     Nomenclature @relation(fields: [productId], references: [id], onDelete: Restrict)
+  id        String       @id @default(cuid())
+  orderId   String
+  order     Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Nomenclature @relation(fields: [productId], references: [id])
+  quantity  Decimal
+  price     Decimal
+  total     Decimal
 
   @@index([orderId])
   @@index([productId])
 }
 
-model Coming {
-  id          String       @id @default(uuid())
+model Incoming {
+  id          String         @id @default(cuid())
   warehouseId String
-  clientId    String       // Supplier
+  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  supplierId  String
+  supplier    Supplier       @relation(fields: [supplierId], references: [id])
   number      String
-  status      String       @default("DRAFT") // DRAFT, CREATED, PROCESSING, COMPLETED, CANCELLED
-  totalAmount Float       @default(0)
-  comments    String?
+  status      DocumentStatus @default(DRAFT)
+  comment     String?
+  totalAmount Decimal        @default(0)
   createdById String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  createdBy   User?          @relation("IncomingCreatedBy", fields: [createdById], references: [id])
+  updatedById String?
+  updatedBy   User?          @relation("IncomingUpdatedBy", fields: [updatedById], references: [id])
+  postedAt    DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
-  warehouse   Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-  supplier    Client       @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  createdBy   User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  items       ComingItem[]
+  items       IncomingItem[]
 
-  @@unique([warehouseId, number])
   @@index([warehouseId])
-  @@index([clientId])
   @@index([status])
+  @@index([supplierId])
   @@index([createdAt])
 }
 
-model ComingItem {
-  id          String       @id @default(uuid())
-  comingId    String
-  productId   String
-  quantity    Float        @default(1)
-  price       Float        @default(0)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+model IncomingItem {
+  id            String       @id @default(cuid())
+  incomingId    String
+  incoming      Incoming     @relation(fields: [incomingId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Nomenclature @relation(fields: [productId], references: [id])
+  quantity      Decimal
+  purchasePrice Decimal
+  total         Decimal
 
-  coming      Coming       @relation(fields: [comingId], references: [id], onDelete: Cascade)
-  product     Nomenclature @relation(fields: [productId], references: [id], onDelete: Restrict)
-
-  @@index([comingId])
+  @@index([incomingId])
   @@index([productId])
 }
 
 model PushSubscription {
-  id        String   @id @default(uuid())
+  id        String   @id @default(cuid())
   userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   endpoint  String   @unique
   p256dh    String
   auth      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@index([userId])
 }
 
 model AuditLog {
-  id          String     @id @default(uuid())
-  userId      String?
-  warehouseId String?
-  action      String     // CREATE, UPDATE, DELETE, STATUS_CHANGE, ROLE_CHANGE
-  entity      String     // NOMENCLATURE, ORDER, COMING, USER, WAREHOUSE
-  entityId    String
-  oldData     String?
-  newData     String?
-  createdAt   DateTime   @default(now())
-
-  user        User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
-  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
-
-  @@index([userId])
-  @@index([warehouseId])
-  @@index([createdAt])
-  @@index([entity])
-}
-
-model Notification {
-  id        String   @id @default(uuid())
-  userId    String
-  title     String
-  message   String
-  link      String?
-  isRead    Boolean  @default(false)
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String
+  entityId  String
+  metadata  String?
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@index([userId])
-  @@index([isRead])
+  @@index([action])
   @@index([createdAt])
 }
